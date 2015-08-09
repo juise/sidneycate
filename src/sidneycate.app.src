@@ -1,0 +1,14 @@
+{application, sidneycate,
+ [
+  {description, "Erlang cluster management"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+
+                  lager
+                 ]},
+  {mod, { sidneycate_app, []}},
+  {env, []}
+ ]}.
