@@ -1,0 +1,2 @@
+# sidneycate
+Erlang cluster management
