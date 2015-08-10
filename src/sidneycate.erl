@@ -83,12 +83,6 @@ init([]) ->
     promiscuous(),
     {ok, #state{self = node(), cluster = sets:new(), c_nodes_queue = sets:new(), d_nodes_queue = sets:new(), sync_timer = synchronize(1)}}.
 
-handle_call({sync, DestCluster, DestCNodes, DestDNodes}, _From, #state{self = Self, cluster = Cluster, c_nodes_queue = CNodes, d_nodes_queue = DNodes} = State) ->
-    NewCluster = add(DestCluster, Cluster),
-    NewCNodes = add(DestCNodes, CNodes),
-    NewDNodes = add(DestDNodes, DNodes),
-    {reply, {NewCluster, NewCNodes, NewDNodes}, State#state{cluster = del(Self, NewCluster), c_nodes_queue = NewCNodes, d_nodes_queue = NewDNodes}};
-
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -100,12 +94,12 @@ handle_cast({join, Nodes}, #state{self = Self, cluster = Cluster, c_nodes_queue 
 handle_cast({leave, Nodes}, #state{self = Self, cluster = Cluster, c_nodes_queue = CNodes, d_nodes_queue = DNodes} = State) ->
     {SuccessNodes, FailNodes} = leave_nodes(leave_candidates(Self, Cluster, Nodes)),
     FailNodes =/= [] andalso lager:error("Terminating connection with nodes ~s failed", [stringify(FailNodes)]),
-    {noreply, State#state{cluster = del(SuccessNodes, Cluster), c_nodes_queue = del(Nodes, CNodes), d_nodes_queue = add(FailNodes, del(SuccessNodes, DNodes))}};
+    {noreply, State#state{cluster = del(SuccessNodes, add(FailNodes, Cluster)), c_nodes_queue = del(Nodes, CNodes), d_nodes_queue = add(FailNodes, del(SuccessNodes, DNodes))}};
 
 handle_cast({bailout, Nodes}, #state{self = Self, cluster = Cluster, c_nodes_queue = CNodes, d_nodes_queue = DNodes} = State) ->
     {SuccessNodes, FailNodes} = bailout_nodes(leave_candidates(Self, Cluster, Nodes)),
     FailNodes =/= [] andalso lager:error("Terminating connection with nodes ~s failed", [stringify(FailNodes)]),
-    {noreply, State#state{cluster = del(SuccessNodes, Cluster), c_nodes_queue = del(Nodes, CNodes), d_nodes_queue = add(FailNodes, del(SuccessNodes, DNodes))}};
+    {noreply, State#state{cluster = del(SuccessNodes, add(FailNodes, Cluster), c_nodes_queue = del(Nodes, CNodes), d_nodes_queue = add(FailNodes, del(SuccessNodes, DNodes))}};
 
 handle_cast(_Request, State) ->
     {noreply, State}.
@@ -145,7 +139,7 @@ promiscuous() ->
     net_kernel:monitor_nodes(true, [nodedown_reason]).
 
 synchronize(N) ->
-    random:seed(erlang:system_time(seconds)),
+    random:seed(erlang:system_time()),
     Interval = random:uniform(net_kernel:get_net_ticktime() * N),
     erlang:send_after(Interval * 1000, self(), synchronize).
 
