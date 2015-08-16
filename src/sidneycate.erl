@@ -99,7 +99,7 @@ handle_cast({leave, Nodes}, #state{self = Self, cluster = Cluster, c_nodes_queue
 handle_cast({bailout, Nodes}, #state{self = Self, cluster = Cluster, c_nodes_queue = CNodes, d_nodes_queue = DNodes} = State) ->
     {SuccessNodes, FailNodes} = bailout_nodes(leave_candidates(Self, Cluster, Nodes)),
     FailNodes =/= [] andalso lager:error("Terminating connection with nodes ~s failed", [stringify(FailNodes)]),
-    {noreply, State#state{cluster = del(SuccessNodes, add(FailNodes, Cluster), c_nodes_queue = del(Nodes, CNodes), d_nodes_queue = add(FailNodes, del(SuccessNodes, DNodes))}};
+    {noreply, State#state{cluster = del(SuccessNodes, add(FailNodes, Cluster)), c_nodes_queue = del(Nodes, CNodes), d_nodes_queue = add(FailNodes, del(SuccessNodes, DNodes))}};
 
 handle_cast(_Request, State) ->
     {noreply, State}.
@@ -151,7 +151,7 @@ leave_nodes(Nodes) ->
     connectiviy(fun(Node) -> net_kernel:disconnect(Node) end, list(Nodes), [], []).
 
 bailout_nodes(Nodes) ->
-    connectiviy(fun(Node) -> net_kernel:disconnect(Node), not in(Node, set(nodes())) end, list(Nodes), [], []).
+    connectiviy(fun(Node) -> net_kernel:disconnect(Node), in(Node, set(nodes())) end, list(Nodes), [], []).
 
 connectiviy(F, [], [], []) ->
     {[], []};

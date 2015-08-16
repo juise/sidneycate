@@ -15,7 +15,7 @@ rel: $(REBAR) deps compile
 		$(REBAR) generate
 
 run:
-		erl -pa ./ebin/ ./deps/*/ebin/ -boot start_sasl -config sys.config -sname $(NAME) -s sidneycate
+		erl -pa ./ebin/ ./deps/*/ebin/ -boot start_sasl -config sys.config -sname $(name) -s sync -s sidneycate
 
 clean:
 		$(REBAR) clean
