@@ -42,6 +42,7 @@ stop() ->
 %% API functions
 %% ===================================================================
 
+-spec join(node() | [node()] | sets:set(node())) -> 'ok'.
 join([]) ->
     ok;
 
@@ -49,9 +50,13 @@ join(Node) when is_atom(Node) ->
     join([Node]);
 
 join(Nodes) when is_list(Nodes) ->
-    gen_server:abcast(?MODULE, {join, set(Nodes)}),
+    join(set(Nodes));
+
+join(Nodes) ->
+    gen_server:abcast(?MODULE, {join, Nodes}),
     ok.
 
+-spec leave(node() | [node()] | sets:set(node())) -> 'ok'.
 leave([]) ->
     ok;
 
@@ -59,9 +64,13 @@ leave(Node) when is_atom(Node) ->
     leave([Node]);
 
 leave(Nodes) when is_list(Nodes) ->
-    gen_server:abcast(?MODULE, {leave, set(Nodes)}),
+    leave(set(Nodes));
+
+leave(Nodes) ->
+    gen_server:abcast(?MODULE, {leave, Nodes}),
     ok.
 
+-spec bailout(node() | [node()] | sets:set(node())) -> 'ok'.
 bailout([]) ->
     ok;
 
@@ -69,7 +78,10 @@ bailout(Node) when is_atom(Node) ->
     bailout([Node]);
 
 bailout(Nodes) when is_list(Nodes) ->
-    gen_server:abcast(?MODULE, {bailout, set(Nodes)}),
+    bailout(set(Nodes));
+
+bailout(Nodes) ->
+    gen_server:abcast(?MODULE, {bailout, Nodes}),
     ok.
 
 start_link() ->
@@ -89,17 +101,17 @@ handle_call(_Request, _From, State) ->
 handle_cast({join, Nodes}, #state{self = Self, cluster = Cluster, c_nodes_queue = CNodes, d_nodes_queue = DNodes} = State) ->
     {SuccessNodes, FailNodes} = join_nodes(join_candidates(Self, Cluster, Nodes)),
     FailNodes =/= [] andalso lager:error("Establishing connection with nodes ~s failed", [stringify(FailNodes)]),
-    {noreply, State#state{cluster = add(FailNodes, add(SuccessNodes, Cluster)), c_nodes_queue = add(FailNodes, del(SuccessNodes, CNodes)), d_nodes_queue = del(Nodes, DNodes)}};
+    {noreply, State#state{cluster = add(FailNodes, add(SuccessNodes, Cluster)), c_nodes_queue = add(FailNodes, del(SuccessNodes, CNodes)), d_nodes_queue = del(SuccessNodes, DNodes)}};
 
 handle_cast({leave, Nodes}, #state{self = Self, cluster = Cluster, c_nodes_queue = CNodes, d_nodes_queue = DNodes} = State) ->
     {SuccessNodes, FailNodes} = leave_nodes(leave_candidates(Self, Cluster, Nodes)),
     FailNodes =/= [] andalso lager:error("Terminating connection with nodes ~s failed", [stringify(FailNodes)]),
-    {noreply, State#state{cluster = del(SuccessNodes, add(FailNodes, Cluster)), c_nodes_queue = del(Nodes, CNodes), d_nodes_queue = add(FailNodes, del(SuccessNodes, DNodes))}};
+    {noreply, State#state{cluster = del(SuccessNodes, add(FailNodes, Cluster)), c_nodes_queue = del(SuccessNodes, CNodes), d_nodes_queue = add(FailNodes, del(SuccessNodes, DNodes))}};
 
 handle_cast({bailout, Nodes}, #state{self = Self, cluster = Cluster, c_nodes_queue = CNodes, d_nodes_queue = DNodes} = State) ->
     {SuccessNodes, FailNodes} = bailout_nodes(leave_candidates(Self, Cluster, Nodes)),
     FailNodes =/= [] andalso lager:error("Terminating connection with nodes ~s failed", [stringify(FailNodes)]),
-    {noreply, State#state{cluster = del(SuccessNodes, add(FailNodes, Cluster)), c_nodes_queue = del(Nodes, CNodes), d_nodes_queue = add(FailNodes, del(SuccessNodes, DNodes))}};
+    {noreply, State#state{cluster = del(SuccessNodes, add(FailNodes, Cluster)), c_nodes_queue = del(SuccessNodes, CNodes), d_nodes_queue = add(FailNodes, del(SuccessNodes, DNodes))}};
 
 handle_cast(_Request, State) ->
     {noreply, State}.
@@ -118,8 +130,8 @@ handle_info({nodedown, Node, Reason}, #state{cluster = Cluster, c_nodes_queue = 
 
 handle_info(synchronize, #state{cluster = Cluster, c_nodes_queue = CNodes, d_nodes_queue = DNodes, sync_timer = TRef} = State) ->
     catch erlang:cancel_timer(TRef),
-    join(list(CNodes)),
-    leave(list(DNodes)),
+    join(CNodes),
+    leave(DNodes),
     {noreply, State#state{sync_timer = synchronize(len(Cluster) + 1)}};
 
 handle_info(_Info, State) ->
@@ -136,23 +148,26 @@ code_change(_OldVsn, State, _Extra) ->
 %% ===================================================================
 
 promiscuous() ->
-    net_kernel:monitor_nodes(true, [nodedown_reason]).
+    ok = net_kernel:monitor_nodes(true, [nodedown_reason]).
 
 synchronize(N) ->
     random:seed(erlang:system_time()),
     Interval = random:uniform(net_kernel:get_net_ticktime() * N),
     erlang:send_after(Interval * 1000, self(), synchronize).
 
-
+-spec join_nodes(sets:set(node())) -> {[node()], [node()]}.
 join_nodes(Nodes) ->
     connectiviy(fun(Node) -> net_kernel:connect(Node) end, list(Nodes), [], []).
 
+-spec leave_nodes(sets:set(node())) -> {[node()], [node()]}.
 leave_nodes(Nodes) ->
     connectiviy(fun(Node) -> net_kernel:disconnect(Node) end, list(Nodes), [], []).
 
+-spec bailout_nodes(sets:set(node())) -> {[node()], [node()]}.
 bailout_nodes(Nodes) ->
     connectiviy(fun(Node) -> net_kernel:disconnect(Node), in(Node, set(nodes())) end, list(Nodes), [], []).
 
+-spec connectiviy(fun((node()) -> boolean()), [node()], [node()], [node()]) -> {[node()], [node()]}.
 connectiviy(F, [], [], []) ->
     {[], []};
 
@@ -167,10 +182,11 @@ connectiviy(F, [Node | Nodes], SuccessNodes, FailNodes) ->
             connectiviy(F, Nodes, SuccessNodes, [Node | FailNodes])
     end.
 
-
+-spec join_nodes(node(), sets:set(node()), sets:set(node())) -> sets:set(node()).
 join_candidates(Self, Cluster, Nodes) ->
     del(Self, Nodes).
 
+-spec leave_nodes(node(), sets:set(node()), sets:set(node())) -> sets:set(node()).
 leave_candidates(Self, Cluster, Nodes) ->
     case in(Self, Nodes) of
         true ->
@@ -189,34 +205,34 @@ list(Xs) ->
 len(Xs) ->
     sets:size(Xs).
 
-in(Node, Nodes) ->
-    sets:is_element(Node, Nodes).
+in(X, Xs) ->
+    sets:is_element(X, Xs).
 
-add(Node, Nodes) when is_atom(Node) ->
-    sets:add_element(Node, Nodes);
+add(X, Xs) when is_atom(X) ->
+    sets:add_element(X, Xs);
 
-add(Nodes1, Nodes) when is_list(Nodes1) ->
-    sets:union(Nodes, set(Nodes1));
+add(Ys, Xs) when is_list(Ys) ->
+    sets:union(Xs, set(Ys));
 
-add(Nodes1, Nodes) ->
-    sets:union(Nodes, Nodes1).
+add(Ys, Xs) ->
+    sets:union(Xs, Ys).
 
-del(Node, Nodes) when is_atom(Node) ->
-    sets:del_element(Node, Nodes);
+del(X, Xs) when is_atom(X) ->
+    sets:del_element(X, Xs);
 
-del(Nodes1, Nodes) when is_list(Nodes1) ->
-    sets:subtract(Nodes, set(Nodes1));
+del(Ys, Xs) when is_list(Ys) ->
+    sets:subtract(Xs, set(Ys));
 
-del(Nodes1, Nodes) ->
-    sets:subtract(Nodes, Nodes1).
+del(Ys, Xs) ->
+    sets:subtract(Xs, Ys).
 
-intersection(Nodes1, Nodes) ->
-    sets:intersection(Nodes, Nodes1).
+intersection(Ys, Xs) ->
+    sets:intersection(Ys, Xs).
 
 
-stringify(Node) when is_atom(Node) ->
-    stringify([Node]);
+stringify(X) when is_atom(X) ->
+    stringify([X]);
 
-stringify([Node | Nodes]) when is_list(Nodes) ->
-    lists:foldl(fun(Node, Acc) -> ["'", atom_to_list(Node), "' ," | Acc] end, ["'", atom_to_list(Node), "'"], Nodes).
+stringify([X | Xs]) when is_list(Xs) ->
+    lists:foldl(fun(X, Acc) -> ["'", atom_to_list(X), "' ," | Acc] end, ["'", atom_to_list(X), "'"], Xs).
 
