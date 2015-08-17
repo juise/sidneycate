@@ -1,0 +1,6 @@
+language: erlang
+
+otp_release:
+    - 18
+
+script: "make deps compile test"
