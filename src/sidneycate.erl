@@ -182,11 +182,11 @@ connectiviy(F, [Node | Nodes], SuccessNodes, FailNodes) ->
             connectiviy(F, Nodes, SuccessNodes, [Node | FailNodes])
     end.
 
--spec join_nodes(node(), sets:set(node()), sets:set(node())) -> sets:set(node()).
+-spec join_candidates(node(), sets:set(node()), sets:set(node())) -> sets:set(node()).
 join_candidates(Self, Cluster, Nodes) ->
     del(Self, Nodes).
 
--spec leave_nodes(node(), sets:set(node()), sets:set(node())) -> sets:set(node()).
+-spec leave_candidates(node(), sets:set(node()), sets:set(node())) -> sets:set(node()).
 leave_candidates(Self, Cluster, Nodes) ->
     case in(Self, Nodes) of
         true ->
